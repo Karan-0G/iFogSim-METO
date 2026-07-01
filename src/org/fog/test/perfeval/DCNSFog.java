@@ -183,7 +183,7 @@ public class DCNSFog {
 				storage,
 				peList,
 				new StreamOperatorScheduler(peList),
-				new FogLinearPowerModel(busyPower, idlePower)
+				new FogLinearPowerModel(busyPower, .7)
 			);
 
 		List<Host> hostList = new ArrayList<Host>();

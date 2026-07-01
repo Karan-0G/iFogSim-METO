@@ -135,4 +135,5 @@ public class PowerHost extends HostDynamicWorkload {
 		return powerModel;
 	}
 
+
 }

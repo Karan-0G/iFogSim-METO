@@ -1,3 +1,4 @@
+
 package org.fog.test.perfeval;
 
 import org.cloudbus.cloudsim.*;
@@ -45,7 +46,6 @@ import org.fog.utils.distribution.DeterministicDistribution;
 //Tracks application execution time and logs latency statistics for performance evaluation.
 import java.util.*;//Standard Java utilities
 
-
 public class METO {
     static List<FogDevice> fogDevices = new ArrayList<>();
     static List<Sensor> sensors = new ArrayList<>();
@@ -53,13 +53,11 @@ public class METO {
     static List<Task> taskList = new ArrayList<>();
     static List<FogNodeWrapper> fnList = new ArrayList<>();
     static Map<Integer, Double> energyMap = new HashMap<>();
-   
     static String appId ="METO_App";
 
 
     public static void main(String[] args) {
         Log.printLine("Starting METO Simulation...");
-        
         try {
             CloudSim.init(1, Calendar.getInstance(), false);//Initializes CloudSim, which is required before using iFogSim.
             FogBroker broker = new FogBroker("broker");
@@ -68,7 +66,6 @@ public class METO {
             createFogDevices(broker.getId());//Creates all fog devices (FN, cloud, gateways, etc.).
             createTasks();// Initializes the list of application tasks (to be offloaded).
             buildFogNodeWrappers();// Wraps FogDevices into custom wrappers (FogNodeWrapper) for additional properties like power and quota.
-            
 
             Map<Task, double[][]> taskMatrices = DecisionMatrixUtil.constructTaskMatrices(taskList, fnList);
             Map<FogNodeWrapper, double[][]> fnMatrices = DecisionMatrixUtil.constructFogNodeMatrices(taskList, fnList);
@@ -104,59 +101,13 @@ public class METO {
             //Calculates weights and applies TOPSIS to rank tasks.
             //Saves ranked list in fnPreferences.
             //Sets its task quota in fnQuotas
-         // Step C: Compute execution time (computation + transmission) for each task on each FN
-          
-            
-         // Step A: Prepare task deadlines and instruction lengths (in MI)
-            Map<Integer, Double> taskDeadlines = new HashMap<>();
-            Map<Integer, Integer> taskInstructionLengths = new HashMap<>();
 
-            for (int i = 0; i < taskList.size(); i++) {
-                taskDeadlines.put(i, (double) taskList.get(i).deadline); 
-                taskInstructionLengths.put(i, taskList.get(i).cycles ); // convert cycles to MI
-            }
-
-            // Step B: Prepare FN MIPS (capacity)
-            Map<Integer, Double> fnMips = new HashMap<>();
-            for (int i = 0; i < fnList.size(); i++) {
-                fnMips.put(i, fnList.get(i).capacity); 
-            }
-
-            // Step C: Compute execution time of each task on each FN
-            Map<Integer, Map<Integer, Double>> executionTimesOnFN = new HashMap<>();
-                 
-            for (Map.Entry<Integer, Integer> taskEntry : taskInstructionLengths.entrySet()) {
-                int taskid = taskEntry.getKey();
-                int taskMI = taskEntry.getValue();
-                
-                Map<Integer, Double> fnExecMap = new HashMap<>();
-                for (Map.Entry<Integer, Double> fnEntry : fnMips.entrySet()) {
-                    int fnid = fnEntry.getKey();
-                    double mips = fnEntry.getValue();
-                    double execTimeMs = (taskMI / mips) *1000;
-                    fnExecMap.put(fnid, execTimeMs);
-                }
-                executionTimesOnFN.put(taskid, fnExecMap);
-            }
-
-
-            Map<Integer, Integer> matches = METOMatcher.runMatching(
-            	    taskPreferences,
-            	    fnPreferences,
-            	    fnQuotas,
-            	    taskDeadlines,
-            	    executionTimesOnFN
-            	);
-
+            Map<Integer, Integer> matches = METOMatcher.runMatching(taskPreferences, fnPreferences, fnQuotas);
             //Runs the Deferred Acceptance Algorithm (DAA).
             //Matches tasks to FNs based on mutual preferences and quotas.
             //Output: map from taskId → fnId.
 
             Log.printLine("\nFinal Task-FN Assignment:");
-            double totalFNenergy=0;
-            double totalTaskEnergy=0;
-            double totalEnergy=0;
-            double energy=0;
             
             for (Map.Entry<Integer, Integer> entry : matches.entrySet()) {
                 int tId = entry.getKey();
@@ -164,43 +115,21 @@ public class METO {
                 Task task = taskList.get(tId);
                 FogNodeWrapper fn = fnList.get(fId);
                 //Iterates through all matched pairs: task ↔ FN.
-//                Random rand = new Random();
-                double gain = computeChannelGain(70.7); // Dummy again
-                double uplinkRate = computeUplinkRate( gain);
-                double txTime = task.inputSize / uplinkRate;
-                double rxTime = task.outputSize / uplinkRate;
                 
-               
-                double compTime = (double) (task.cycles / fn.capacity)*1000;//Computation time: number of CPU cycles / FN capacity.
-               
-                double fnEnergy = (fn.txPower * (txTime + rxTime) + ((compTime * fn.CompPower)));//fnEnergy: Total energy used by the fog node.
-                totalFNenergy= totalFNenergy +fnEnergy;
-                totalTaskEnergy=totalTaskEnergy + task.transmissionEnergy;
-                energy=fnEnergy+task.transmissionEnergy;
-                totalEnergy=totalFNenergy+totalTaskEnergy;
+                double txTime = (double) task.inputSize / 10e6;//Transmission time: based on input size and 10 Mbps bandwidth.
+                double compTime = (double) task.cycles / fn.capacity;//Computation time: number of CPU cycles / FN capacity.
+                double rxTime = (double) task.outputSize / 10e6;//Reception time: based on output size.
+                double energy = fn.txPower * (txTime + rxTime) + fn.powerBusy * compTime;//Estimates total energy consumed by FN to handle the task.
                 energyMap.put(tId, energy);//Stores it in energyMap
 
-//                Log.printLine("Task T" + tId + " -> FN F" + fId +
-//                        " | compPower: " + String.format("%.3f", fn.CompPower) +
-//                        " W | FNEnergy = " + String.format("%.4f",  energy) + " J");
-               
+                Log.printLine("Task T" + tId + " -> FN F" + fId +
+                        " | Power: " + String.format("%.3f", fn.powerBusy) +
+                        " W | Energy = " + String.format("%.4f", energy) + " J");
                 //Prints each assignment with energy and power consumption details.
-//                Log.printLine("Task " + task.id + " InputSize: " + task.inputSize +
-//                        " OutputSize: " + task.outputSize +
-//                        " Cycles: " + task.cycles +
-//                        " FN " + fn.id + " Capacity: " + fn.capacity +
-//                        " CompPower: " + fn.CompPower);
-
             }
-            System.out.println("======================================");
-            System.out.println("Total FN energy : " +totalEnergy + " J");
-            System.out.println("======================================");
-            
 
-            Application application = createApplication("METO_App", broker.getId(), taskList);
+            Application application = createApplication("METO_App", broker.getId());
             //Creates the application with modules and data flows.
-            addSensorsAndActuators(broker.getId(), "METOApp", fogDevices, application);
-
            
             Controller controller = new Controller("master-controller", fogDevices, sensors, actuators);
             //Instantiates the Controller, which manages simulation entities.
@@ -210,12 +139,12 @@ public class METO {
             );
             //Submits the application with a custom module placement policy (ModulePlacementMETO), based on the METO matches.
             
+
+
             TimeKeeper.getInstance().setSimulationStartTime(Calendar.getInstance().getTimeInMillis());
             //Sets the simulation start time for logging and metrics.
             CloudSim.startSimulation();
             CloudSim.stopSimulation();//Starts and runs the simulation.
-         // In METO.java, after CloudSim.stopSimulation();
-
             Log.printLine("METO Simulation finished!");
           
 
@@ -228,79 +157,39 @@ public class METO {
         }
         
     }
-   
+
     private static void createTasks() {//This method generates a list of computational tasks with randomized parameters.
     	 taskList.clear();//Clears any existing tasks before adding new ones to ensure a fresh simulation.
          Random rand = new Random();
-         // heterogeneous: where no two tasks have same parameter values
          
          
-         int numTasks =750; // Or 500, 750, 1000
+         
+         int numTasks = 50; // Or 500, 750, 1000
 
          for (int i = 0; i < numTasks; i++) {
              int inputSize = (300 + rand.nextInt(301)) * 1024;
              int outputSize = (10 + rand.nextInt(11)) * 1024;
              int cycles = (210 + rand.nextInt(271)) * 1_000_000;
              int deadline = 30 + rand.nextInt(31);
-             double gain = computeChannelGain(70.7); // for homogenoues setup If devices and FNs are uniformly distributed, the average distance between an IoT device and a randomly selected FNs
-             double transmissionPower= 0.1 + 0.9*rand.nextDouble();
-             
-             double uplinkRate = computeUplinkRate( gain);//uplinkRate simulates bandwidth between device and fog node.
-             double txTime = inputSize / uplinkRate;//txTime: Time to send task data. transmission time
-        
-             double transmissionEnergy = transmissionPower* txTime ;//deviceEnergy: Energy used during transmission.
-
-             taskList.add(new Task("T" + i, inputSize, outputSize, cycles, deadline,transmissionEnergy));
+             taskList.add(new Task("T" + i, inputSize, outputSize, cycles, deadline));
          }
-//        for (Task t : taskList) {
-//            Log.printLine(t.toString());
-//        }
+        for (Task t : taskList) {
+            Log.printLine(t.toString());
+        }
     }
-//    private static void createTasks() {//This method generates a list of computational tasks with randomized parameters.
-//   	 taskList.clear();//Clears any existing tasks before adding new ones to ensure a fresh simulation.
-//        Random rand = new Random();
-//        
-//        // homogeneous: where tasks have same parameter values
-//        
-//        int numTasks = 100; // Or 500, 750, 1000
-//
-//        for (int i = 0; i < numTasks; i++) {
-//            int inputSize = (300 ) * 1024;
-//            int outputSize = (10 ) * 1024;
-//            int cycles = (210 ) * 1_000_000;
-//            int deadline = 30 ;
-//    double transmissionPower= 0.1 + 0.9*rand.nextDouble();
-//    
-//    double uplinkRate = computeUplinkRate( gain);//uplinkRate simulates bandwidth between device and fog node.
-//    double txTime = inputSize / uplinkRate;//txTime: Time to send task data. transmission time
-//    
-//
-//  
-//    double transmission = transmissionPower* txTime ;//deviceEnergy: Energy used during transmission.
-
-//           taskList.add(new Task("T" + i, inputSize, outputSize, cycles, deadline,transmission));
-//        }
-//       for (Task t : taskList) {
-//           Log.printLine(t.toString());
-//       }
-//   }
 
     private static void buildFogNodeWrappers() {//This wraps each Fog Device (FN) into a FogNodeWrapper to include power, capacity, and quota info.
         for (FogDevice d : fogDevices) {
             //Only selects devices whose name starts with "fn-" (fog nodes, not cloud).
-        	 Random rand = new Random();
             if (d.getName().startsWith("fn-")) {
                 int id = d.getId();
-                double txPower = 1+ rand.nextDouble();
-                double idle = .05;
-                double compPower = 0.35 + 0.20* rand.nextDouble();
-                int ghz = 6 + rand.nextInt(5);
-             
-                double capacity = ghz*10e8;
-                int quota = 50+ rand.nextInt(451);
- 
+                double txPower = 0.1;
+                double idle = 2.0;
+                double busy = 3.5;
+                double capacity = d.getHost().getTotalMips();
+                int quota = 10;
                 //Sets power characteristics and computes processing capacity from the host. Each FN can handle up to 10 tasks (quota = 10).
-                fnList.add(new FogNodeWrapper(id, txPower, idle, compPower, capacity, quota));
+                fnList.add(new FogNodeWrapper(id, txPower, idle, busy, capacity, quota));
                 //Adds each wrapped fog node to fnList.
             }
         }
@@ -309,9 +198,7 @@ public class METO {
             Log.printLine("WARNING: fnList is empty after building wrappers. Check naming conventions!");
         } else {
             for (FogNodeWrapper d : fnList) {
-            	 System.out.println("======================================");
                 Log.printLine(d.toString());
-                System.out.println("======================================");
             }
         }
     }
@@ -320,7 +207,7 @@ public class METO {
         Random rand = new Random();
         int fogNodes = 5;
      // Create the cloud device FIRST, as it's often the parent of others
-        // Ensure its name is exactly "cloud"
+        // Ensure its name is exactly "cloud" (lowercase, no extra spaces)
         FogDevice cloud = createFogDevice("cloud", 100000, 100000); // Example MIPS and RAM
         cloud.setParentId(-1); // Cloud usually has no parent
         fogDevices.add(cloud);//Creates a powerful cloud device that will act as the root.
@@ -329,13 +216,13 @@ public class METO {
         for (int i = 0; i < fogNodes ; i++) {
             String name = "fn-" + i;//Creates fog nodes named fn-0, fn-1, ..., fn-4.
 
-                        
-            int ghz = 6 + rand.nextInt(9);                 // U[2, 10]
-            double capacity = ghz*10e8;//Randomizes RAM (50–500), CPU speed (6–10 GHz), and converts to MIPS.
-         
-			
+            int vru = 50 + rand.nextInt(451);              // U[50, 500]
+            int ghz = 6 + rand.nextInt(5);                 // U[6, 10]
+            int mips = ghz * 1000;//Randomizes RAM (50–500), CPU speed (6–10 GHz), and converts to MIPS.
+            @SuppressWarnings("unused")
+			double power = 0.35 + 0.20 * rand.nextDouble();// U[0.35, 0.55]
 
-            FogDevice fn = createFogDevice(name, (long) capacity, 1000);
+            FogDevice fn = createFogDevice(name, mips, vru);
             fn.setParentId(cloud.getId()); // Set cloud as parent
             fn.setUplinkLatency(100.0); // Example latency to cloud
             fogDevices.add(fn);//Each FN is created and connected to the cloud.
@@ -348,9 +235,7 @@ public class METO {
 
     private static FogDevice createFogDevice(String name, long mips, int ram) {//Factory method to create a FogDevice.
         List<Pe> peList = List.of(new Pe(0, new PeProvisionerSimple(mips)));//Creates a processing element with provisioned MIPS.
-        Random rand = new Random();
-        
-        double compPower = 0.35 + 0.20 * rand.nextDouble();// U[0.35, 0.55]
+
         PowerHost host = new PowerHost(//Wraps the PE in a PowerHost with RAM, bandwidth, scheduler, and power model.
             FogUtils.generateEntityId(),
             new RamProvisionerSimple(ram),
@@ -358,7 +243,7 @@ public class METO {
             1000000,
             peList,
             new StreamOperatorScheduler(peList),
-            new FogLinearPowerModel(compPower, .05)//.05 is idle power
+            new FogLinearPowerModel(3.5, 2.0)
         );
 
         FogDeviceCharacteristics characteristics = new FogDeviceCharacteristics(
@@ -373,104 +258,152 @@ public class METO {
         } catch (Exception e) {
             e.printStackTrace();
         }
-       ;
         return device;//Returns the created fog device object.
     }
-    private static void addSensorsAndActuators(int userId, String appId, List<FogDevice> fogDevices, Application app) {
-        for (FogDevice device : fogDevices) {
-            if (device.getName().startsWith("fn-")) {
-                Sensor sensor = new Sensor("s-" + device.getId(), "IoTSensor", userId, appId, new DeterministicDistribution(5.0));
-                Actuator actuator = new Actuator("a-" + device.getId(), userId, appId, "IoTActuator");
-
-                sensor.setGatewayDeviceId(device.getId());
-                
-                sensor.setLatency(2.0);  // latency from sensor to device
-
-                actuator.setGatewayDeviceId(device.getId());
-                actuator.setLatency(2.0);  // latency from device to actuator
-
-                sensor.setApp(app);
-                actuator.setApp(app);
-                
-             
-            }
-        }
-    }
 
 
-    private static Application createApplication(String appId, int userId, List<Task> taskList) {
+    private static Application createApplication(String appId, int userId) {
+    	//Creates a new application with given ID and user ID.
         Application app = Application.createApplication(appId, userId);
-
-        // Base modules
-        // You might want to adjust MIPS for these if they perform significant computation.
-        // For now, keeping your adjusted values.
-        app.addAppModule("ClientModule", 100);
-        app.addAppModule("ProcessingModule", 500);
-        app.addAppModule("StorageModule", 50);
-
-        // Base edges
+        
+        //Defines three logical modules of the application (representing microservices).
+        app.addAppModule("ClientModule", 10);
+        app.addAppModule("ProcessingModule", 10);
+        app.addAppModule("StorageModule", 10);
+        
+        //Adds data flow edges representing communication between modules and devices (sensor → client → processor → storage/response).
         app.addAppEdge("IoTSensor", "ClientModule", 400000, 300, "IoTData", Tuple.UP, AppEdge.SENSOR);
-        app.addAppEdge("ClientModule", "ProcessingModule", 5 * 1024 * 1024, 500, "ProcessedData", Tuple.UP, AppEdge.MODULE);
+        app.addAppEdge("ClientModule", "ProcessingModule", 480000000, 500, "ProcessedData", Tuple.UP, AppEdge.MODULE);
         app.addAppEdge("ProcessingModule", "StorageModule", 20000, 100, "StorageData", Tuple.UP, AppEdge.MODULE);
         app.addAppEdge("ProcessingModule", "ClientModule", 20000, 50, "Response", Tuple.DOWN, AppEdge.MODULE);
         app.addAppEdge("ClientModule", "IoTActuator", 100, 20, "Actuation", Tuple.DOWN, AppEdge.ACTUATOR);
 
-        // Task modules and edges
-        for (Task task : taskList) {
-            String tm = "TaskModule-" + task.id;
-            // CORRECTED LINE: Set the MIPS of the TaskModule based on the task's CPU cycles.
-            // task.cycles are in absolute CPU cycles (instructions). Dividing by 1,000,000
-            // converts them to Mega Instructions (MI), which is a common unit for AppModules MIPS.
-            // This ensures the AppModules actually demand computational resources from the FogDevices,
-            // allowing iFogSim's energy model to reflect real utilization.
-            app.addAppModule(tm, task.cycles / 1_000_000);
-
-            // Send tuple from ClientModule to TaskModule
-            app.addAppEdge("ClientModule", tm, task.inputSize, 500, "TaskData-" + task.id, Tuple.UP, AppEdge.MODULE);
-
-            // Return response from TaskModule to ClientModule
-            app.addAppEdge(tm, "ClientModule", task.outputSize, 100, "TaskResponse-" + task.id, Tuple.DOWN, AppEdge.MODULE);
-        }
-
-        // Tuple mappings
+        //Defines how incoming data types ("tuples") get transformed through the modules.
         app.addTupleMapping("ClientModule", "IoTData", "ProcessedData", new FractionalSelectivity(1.0));
         app.addTupleMapping("ProcessingModule", "ProcessedData", "StorageData", new FractionalSelectivity(1.0));
         app.addTupleMapping("ProcessingModule", "ProcessedData", "Response", new FractionalSelectivity(1.0));
         app.addTupleMapping("ClientModule", "Response", "Actuation", new FractionalSelectivity(1.0));
-        for (Task task : taskList) {
-            String tm = "TaskData-" + task.id;
-            app.addTupleMapping("TaskModule-" + task.id, tm, "TaskResponse-" + task.id, new FractionalSelectivity(1.0));
-        }
 
-        // AppLoops for end-to-end measurement
-        List<AppLoop> loops = new ArrayList<>();
-        loops.add(new AppLoop(List.of("IoTSensor", "ClientModule", "ProcessingModule", "ClientModule", "IoTActuator")));
-        // Add loops per task
-        for (Task task : taskList) {
-            loops.add(new AppLoop(List.of("ClientModule", "TaskModule-" + task.id, "ClientModule")));
-        }
-        
-        
-        app.setLoops(loops);
-
-        return app;
+        AppLoop loop1 = new AppLoop(List.of("IoTSensor", "ClientModule", "ProcessingModule", "ClientModule", "IoTActuator"));
+        app.setLoops(List.of(loop1));
+        return app;//Defines a control loop (end-to-end data path). Returns the final application object.
     }
-    public static double computeChannelGain(double distance) {//distance is in range 50-500
-        double pathLossDb = 38.02 + 20 * Math.log10(distance);
-        return Math.pow(10, -pathLossDb / 10);
-    }
-
-    public static double computeUplinkRate( double gain) {
-    	 Random rand = new Random();
-        double bandwidth = 10e6;
-        double noisePower = 1e-10;
-        double power = 1+ rand.nextDouble();;
-        return bandwidth * Math.log(1 + (power * gain / noisePower)) / Math.log(2);
-        //This is the Shannon Capacity Formula,
-        //C = B * log2(1 + S/N)
-
-    }
-
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+package org.fog.test.perfeval;
+
+import org.fog.application.Application;//Represents an iFogSim application.
+import org.fog.entities.FogDevice;// Represents fog nodes/devices.
+import org.fog.placement.ModulePlacement;//Superclass used for defining module placement strategies.
+import java.util.*;
+
+
+
+public class ModulePlacementMETO extends ModulePlacement {
+	//This class defines a custom module placement policy for the METO algorithm, extending iFogSim's ModulePlacement base class.
+    private Map<Integer, Integer> taskToFNMap;//Maps each Task ID to a selected Fog Node (FN) index (from METO output).
+    private List<Task> taskList;// List of task objects.
+    private List<FogDevice> fogDevices;//All fog devices available in the simulation.
+    private List<FogNodeWrapper> fnList;//List of fog nodes wrapped with extra metadata (e.g., resource info).
+
+    public ModulePlacementMETO(List<FogDevice> fogDevices, Application application,
+                                List<Task> taskList, List<FogNodeWrapper> fnList,
+                                Map<Integer, Integer> taskToFNMap) {
+        super();//Calls the parent constructor ModulePlacement().
+        this.fogDevices = fogDevices;
+        this.taskList = taskList;
+        this.fnList = fnList;
+        this.taskToFNMap = taskToFNMap;
+        //Initializes module-device and instance-count mappings.
+        this.setModuleToDeviceMap(new HashMap<String, List<Integer>>());
+        this.setModuleInstanceCountMap(new HashMap<Integer, Map<String, Integer>>());
+        mapModules();//Calls the core placement function to assign modules based on METO's output.
+    }
+
+   @Override
+    protected void mapModules() {
+        for (FogDevice device : fogDevices) {
+            if (device.getName().startsWith("cloud")) {//If the device is a cloud node, attach the StorageModule.
+                addModuleToDevice("StorageModule", device.getName());
+            } else if (device.getName().startsWith("fn-")) {
+                addModuleToDevice("ProcessingModule", device.getName());//ProcessingModule: Handles computation.
+                addModuleToDevice("ClientModule", device.getName());//ClientModule: Manages interaction with tasks.
+            }
+        }
+
+        for (Map.Entry<Integer, Integer> entry : taskToFNMap.entrySet()) {
+            Task task = taskList.get(entry.getKey());
+            FogNodeWrapper fn = fnList.get(entry.getValue());
+
+            for (FogDevice device : fogDevices) {
+                if (device.getId() == fn.id) {
+                	//Identifies the FogDevice corresponding to the FogNodeWrapper using its id.
+                    System.out.println("[METO Placement] Assigning Task " + task.id +
+                            " to FN Device " + device.getName());
+                 // ✅ Add task module to device
+                    String taskModuleName = "TaskModule-" + task.id;
+                    addModuleToDevice(taskModuleName, device.getName());
+                }
+            }
+        }
+    }
+
+    private void addModuleToDevice(String moduleName, String deviceName) {//Associates a module with a fog device.
+        int deviceId = -1;
+        for (FogDevice device : fogDevices) {
+            if (device.getName().equals(deviceName)) {//Finds the deviceId of the device by name.
+                deviceId = device.getId();
+                break;
+            }
+        }
+        if (deviceId == -1) return;//If no device is found, exit early.
+
+        if (!getModuleToDeviceMap().containsKey(moduleName)) {
+            getModuleToDeviceMap().put(moduleName, new ArrayList<>());//Ensure the module entry exists in the map.
+        }
+        getModuleToDeviceMap().get(moduleName).add(deviceId);//Adds this device to the list of devices hosting the module.
+       
+    }
+} 
+
+
+
 
     

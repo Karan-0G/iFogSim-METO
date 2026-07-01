@@ -1,0 +1,1 @@
+memberSearchIndex = [{"p":"org.fog.test.perfeval","c":"METO","l":"computeChannelGain(double)"},{"p":"org.fog.test.perfeval","c":"METO","l":"computeUplinkRate(double)"},{"p":"org.fog.test.perfeval","c":"METO","l":"main(String[])","u":"main(java.lang.String[])"},{"p":"org.fog.test.perfeval","c":"METO","l":"METO()","u":"%3Cinit%3E()"}];updateSearchResults();

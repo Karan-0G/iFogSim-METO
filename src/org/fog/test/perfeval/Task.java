@@ -6,13 +6,15 @@ public class Task {
     public int outputSize;
     public int cycles;
     public int deadline;
+    public double transmissionEnergy;
 
-    public Task(String id, int inputSize, int outputSize, int cycles, int deadline) {
+    public Task(String id, int inputSize, int outputSize, int cycles, int deadline,double transmission) {
         this.id = id;
         this.inputSize = inputSize;
         this.outputSize = outputSize;
         this.cycles = cycles;
         this.deadline = deadline;
+        this.transmissionEnergy = transmission;
     }
 
     @Override

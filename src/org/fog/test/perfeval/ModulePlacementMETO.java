@@ -28,8 +28,9 @@ public class ModulePlacementMETO extends ModulePlacement {
         mapModules();//Calls the core placement function to assign modules based on METO's output.
     }
 
-    @Override
+   @Override
     protected void mapModules() {
+	   Map<Integer, Integer> fnTaskCount = new HashMap<>();
         for (FogDevice device : fogDevices) {
             if (device.getName().startsWith("cloud")) {//If the device is a cloud node, attach the StorageModule.
                 addModuleToDevice("StorageModule", device.getName());
@@ -41,15 +42,37 @@ public class ModulePlacementMETO extends ModulePlacement {
 
         for (Map.Entry<Integer, Integer> entry : taskToFNMap.entrySet()) {
             Task task = taskList.get(entry.getKey());
+            
             FogNodeWrapper fn = fnList.get(entry.getValue());
+            
+            fnTaskCount.put(fn.id, fnTaskCount.getOrDefault(fn.id, 0) + 1);
 
             for (FogDevice device : fogDevices) {
                 if (device.getId() == fn.id) {
                 	//Identifies the FogDevice corresponding to the FogNodeWrapper using its id.
-                    System.out.println("[METO Placement] Assigning Task " + task.id +
-                            " to FN Device " + device.getName());
+//                    System.out.println("[METO Placement] Assigning Task " + task.id +
+//                            " to FN Device " + device.getName());
+                 // ✅ Add task module to device
+                    String taskModuleName = "TaskModule-" + task.id;
+                    addModuleToDevice(taskModuleName, device.getName());
                 }
             }
+        }
+     // Display total tasks and percentage of quota per FN
+        System.out.println("======= Task Allocation Summary =======");
+        for (FogNodeWrapper fn : fnList) {
+            int assigned = fnTaskCount.getOrDefault(fn.id, 0);
+            int quota = fn.quota;
+            double percentUsed = quota > 0 ? (assigned * 100.0 / quota) : 0.0;
+            String fnName = "";
+            for (FogDevice device : fogDevices) {
+                if (device.getId() == fn.id) {
+                    fnName = device.getName();
+                    break;
+                }
+            }
+            System.out.printf("Fog Node: %-10s | Tasks Assigned: %2d | Quota: %2d | Used: %.2f%%\n",
+                    fnName, assigned, quota, percentUsed);
         }
     }
 
@@ -67,6 +90,7 @@ public class ModulePlacementMETO extends ModulePlacement {
             getModuleToDeviceMap().put(moduleName, new ArrayList<>());//Ensure the module entry exists in the map.
         }
         getModuleToDeviceMap().get(moduleName).add(deviceId);//Adds this device to the list of devices hosting the module.
+       
     }
 } 
 
